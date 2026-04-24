@@ -86,6 +86,21 @@ async function getReadingTime(url: string): Promise<string> {
   }
 }
 
+export async function getCategories(): Promise<string[]> {
+  const browser = await chromium.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+  });
+  try {
+    const page = await browser.newPage();
+    await page.setExtraHTTPHeaders({ 'Accept-Language': 'es-CL,es;q=0.9' });
+    const links = await getNavLinks(page);
+    return [...new Set(links.map(l => l.text).filter(Boolean))];
+  } finally {
+    await browser.close();
+  }
+}
+
 export async function scrapeBlog(category: string): Promise<Article[]> {
   const [dateMap] = await Promise.all([buildDateMap()]);
 

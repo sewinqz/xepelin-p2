@@ -2,8 +2,9 @@ import 'dotenv/config';
 import express, { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import axios from 'axios';
-import { scrapeBlog } from './scraper';
+import { scrapeBlog, getCategories } from './scraper';
 import { writeToSheet } from './sheets';
+import type { Article } from './types';
 
 const app = express();
 app.use(express.json());
@@ -32,11 +33,34 @@ app.post('/scrape', (req: Request, res: Response) => {
   // Run scrape + sheet write + webhook in background
   (async () => {
     try {
-      console.log(`[scrape] starting – category="${category}"`);
-      const articles = await scrapeBlog(category);
-      console.log(`[scrape] found ${articles.length} articles`);
+      let articles: Article[];
+      let sheetCategory: string;
 
-      const sheetUrl = await writeToSheet(category, articles);
+      if (category.toUpperCase() === 'ALL') {
+        const categories = await getCategories();
+        console.log(`[scrape] ALL mode – ${categories.length} categories: ${categories.join(', ')}`);
+        articles = [];
+        for (const cat of categories) {
+          console.log(`[scrape] scraping "${cat}"…`);
+          const catArticles = await scrapeBlog(cat);
+          console.log(`[scrape] "${cat}": ${catArticles.length} articles`);
+          articles.push(...catArticles);
+        }
+        sheetCategory = 'all';
+      } else {
+        console.log(`[scrape] starting – category="${category}"`);
+        articles = await scrapeBlog(category);
+        sheetCategory = category;
+      }
+
+      console.log(`[scrape] total ${articles.length} articles`);
+
+      if (articles.length === 0) {
+        console.warn('[scrape] no articles found, aborting');
+        return;
+      }
+
+      const sheetUrl = await writeToSheet(sheetCategory, articles);
       console.log(`[sheets] written → ${sheetUrl}`);
 
       // Zapier webhook expects exactly: { email, link }
